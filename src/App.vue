@@ -1,58 +1,97 @@
 <template>
   <div class="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500">
-    <!-- Login Screen -->
-    <div v-if="!connected" class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-10">
-      <div class="text-center mb-8">
-        <h2 class="text-4xl font-bold text-gray-800 mb-2">💬 Chat App</h2>
-        <p class="text-gray-500">Connect and start messaging</p>
-      </div>
-      <input 
-        v-model="userIdInput" 
-        @keyup.enter="connectUser"
-        class="w-full mb-6 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-all" 
-        placeholder="Enter your user ID" 
+    
+    <!-- Authentication Screen -->
+    <div v-if="!isAuthenticated">
+      <!-- Login Form -->
+      <LoginForm 
+        v-if="authMode === 'login'"
+        @login-success="handleAuthSuccess"
+        @switch-to-register="authMode = 'register'"
       />
-      <button 
-        @click="connectUser" 
-        class="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 font-semibold shadow-lg"
-      >
-        Connect
-      </button>
+      
+      <!-- Register Form -->
+      <RegisterForm 
+        v-else
+        @register-success="handleAuthSuccess"
+        @switch-to-login="authMode = 'login'"
+      />
     </div>
 
     <!-- Chat Screen -->
-    <div v-else class="w-full max-w-6xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-      <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 flex items-center justify-between">
+    <div v-else class="w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh]">
+      <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div>
           <h3 class="text-2xl font-bold">💬 Chat App</h3>
-          <p class="text-sm text-blue-100">Logged in as: <span class="font-semibold">{{ userId }}</span></p>
+          <p class="text-sm text-blue-100">
+            Welcome, <span class="font-semibold">{{ user?.name || user?.email }}</span>
+            <span class="ml-2 text-xs bg-blue-500 px-2 py-1 rounded-full">{{ user?.role }}</span>
+          </p>
         </div>
-        <div class="flex items-center space-x-2">
-          <span class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></span>
-          <span class="text-sm">Online</span>
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2">
+            <span class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></span>
+            <span class="text-sm">Online</span>
+          </div>
+          <button
+            @click="handleLogout"
+            class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+          >
+            Logout
+          </button>
         </div>
       </div>
-      <ChatWindow />
+      <div class="flex-1 min-h-0">
+        <ChatWindow />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import ChatWindow from './components/ChatWindow.vue'
+import { ref, onMounted } from 'vue'
+import { useAuth } from './store/auth'
 import { useChat } from './store/chat'
+import LoginForm from './components/LoginForm.vue'
+import RegisterForm from './components/RegisterForm.vue'
+import ChatWindow from './components/ChatWindow.vue'
 
-const { userId, receiverId, fetchOnlineUsers, connect } = useChat()
+// Auth composable
+const { user, isAuthenticated, logout, initializeAuth } = useAuth()
 
-const userIdInput = ref('')
-const connected = ref(false)
+// Chat composable
+const { connect, disconnect, fetchOnlineUsers } = useChat()
 
-function connectUser() {
-  if (!userIdInput.value) return alert('Enter user ID')
-  connect(userIdInput.value)
-  connected.value = true
-  fetchOnlineUsers()
+// UI state
+const authMode = ref('login') // 'login' or 'register'
+
+// Handle successful authentication
+async function handleAuthSuccess() {
+  console.log('Authentication successful, user:', user.value)
+  
+  // Connect to chat with user ID from JWT
+  if (user.value?.id) {
+    await connect(user.value.id.toString())
+    fetchOnlineUsers()
+  }
 }
+
+// Handle logout
+async function handleLogout() {
+  await disconnect() // Disconnect from chat first
+  await logout() // Then logout from auth
+  authMode.value = 'login' // Reset to login form
+}
+
+// Initialize authentication on app start
+onMounted(() => {
+  initializeAuth()
+  
+  // If already authenticated, connect to chat
+  if (isAuthenticated.value && user.value?.id) {
+    handleAuthSuccess()
+  }
+})
 </script>
 
 <style scoped>
